@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Generator Lampiran Teguran</title>
+<style>
+:root{--bg:#f4f6f9;--card:#fff;--tx:#1d2733;--mut:#5f6b7a;--pri:#1f4e78;--bd:#d6dce4}
+*{box-sizing:border-box}body{margin:0;font-family:Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--tx)}
+.wrap{max-width:860px;margin:32px auto;padding:0 16px}h1{font-size:22px;margin:0 0 4px}p.sub{color:var(--mut);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:20px;margin-bottom:16px}
+.card h2{font-size:15px;margin:0 0 12px;color:var(--pri)}label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}
+input[type=text],textarea{width:100%;padding:9px 10px;border:1px solid var(--bd);border-radius:6px;font:inherit;font-size:14px}
+textarea{min-height:60px;resize:vertical}
+.mrow{border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin-bottom:8px}.mrow b{font-size:13px}
+.mrow input,.mrow textarea{margin-top:4px}.mrow textarea{min-height:48px}.tag{display:inline-block;font-size:11px;background:#eef2f7;border-radius:4px;padding:1px 6px;margin-left:6px;color:var(--mut)}.hint{font-size:12px;color:var(--mut);margin-top:4px}
+button{background:var(--pri);color:#fff;border:0;border-radius:6px;padding:11px 20px;font-size:14px;font-weight:600;cursor:pointer}
+button:disabled{background:#9aa8b8;cursor:not-allowed}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid var(--bd);padding:6px 8px;text-align:left}th{background:#eef2f7}
+.msg{font-size:13px;margin-top:10px}.err{color:#b42318}.ok{color:#067647}.warn{color:#b54708}
+</style></head><body><div class="wrap">
+<h1>Generator Lampiran Surat Teguran</h1>
+<p class="sub">Excel → ZIP berisi 1 PDF per bank (1 s.d. 3 tabel sesuai data). Semua proses berjalan di browser, tidak ada data yang dikirim ke internet.</p>
+
+<div class="card"><h2>0. Persiapan</h2>
+<button type="button" id="dlTpl">⬇ Download Template Excel</button>
+<label style="margin-top:16px">Font Frutiger (file .ttf / .otf, cukup sekali, tersimpan di browser)</label>
+<div style="display:flex;gap:16px;flex-wrap:wrap">
+<div><div class="hint">Frutiger 45 Light (teks biasa)</div><input type="file" id="fL" accept=".ttf,.otf"></div>
+<div><div class="hint">Frutiger 65 Bold (judul &amp; nama bank)</div><input type="file" id="fB" accept=".ttf,.otf"></div>
+</div>
+<div id="fontInfo" class="msg"></div>
+<button type="button" id="fReset" style="background:#fff;color:var(--pri);border:1px solid var(--pri);padding:7px 14px;margin-top:8px">Hapus font tersimpan</button>
+</div>
+
+<div class="card"><h2>1. Header lampiran</h2>
+<label>Nomor &amp; tanggal surat (default)</label>
+<input type="text" id="nomor">
+<button type="button" id="nReset" style="background:#fff;color:var(--pri);border:1px solid var(--pri);padding:6px 12px;margin-top:6px;font-size:12px">Kembalikan default</button>
+<div class="hint">Berlaku untuk semua bank, kecuali di-override di sheet <b>Bank</b> pada Excel.</div>
+<label style="margin-top:16px">Mapping perihal per kombinasi pelanggaran (editable)</label>
+<div class="hint" style="margin-bottom:8px">Kombinasi ditentukan otomatis per bank dari tabel yang terisi: Pemenuhan 1 = Jenjang, 2 = Asosiasi, 3 = BI. Perubahan tersimpan otomatis di browser ini.</div>
+<div id="map"></div>
+<button type="button" id="reset" style="background:#fff;color:var(--pri);border:1px solid var(--pri);padding:7px 14px;margin-top:8px">Kembalikan ke default</button>
+<label style="margin-top:16px">Judul tabel per jenis pemenuhan (editable)</label>
+<div id="sec"></div>
+<div class="hint">Prioritas perihal: sheet <b>Bank</b> di Excel (jika diisi) → mapping di atas.</div>
+</div>
+
+<div class="card"><h2>2. Upload Excel</h2>
+<input type="file" id="file" accept=".xlsx,.xls">
+<div class="hint">Gunakan template dari tombol download di bagian 0.</div>
+<div id="info" class="msg"></div><div id="prev"></div>
+</div>
+
+<div class="card"><h2>3. Generate</h2>
+<button id="go" disabled>Generate ZIP</button><div id="out" class="msg"></div></div>
+</div>
+
+<script src="lib/jspdf.umd.min.js"></script>
+<script src="lib/jspdf.plugin.autotable.min.js"></script>
+<script src="lib/jszip.min.js"></script>
+<script src="lib/xlsx.full.min.js"></script>
+<script>
+const SEC=[
+{k:1,label:"Pemenuhan 1 - Jenjang",t:"Pemenuhan Pasal 44 PBI PUVA dan Pasal 19 PADG Pelaku Pasar (Kewajiban Sertifikasi Dealer dan Kesesuaian Jenjang)"},
+{k:2,label:"Pemenuhan 2 - Asosiasi",t:"Pemenuhan Pasal 44 PBI PUVA dan Pasal 33 PADG Pelaku Pasar (Kewajiban menjadi Anggota Asosiasi Profesi Tresuri)"},
+{k:3,label:"Pemenuhan 3 - Terdaftar di BI",t:"Pemenuhan Pasal 44 dan Pasal 143 PBI PUVA dan Pasal 23 PADG Pelaku Pasar (Terdaftar di Bank Indonesia)"}];
+const secTitle=k=>t($("s_"+k).value);
+const KET3="Belum terdaftar di Bank Indonesia";
+const $=id=>document.getElementById(id);
+const t=v=>v==null?"":String(v).trim();
+let banks=null, over={};
+const COMBOS=[
+ {k:"123",code:"K1",slug:"Jenjang-Asosiasi-BI",label:"Jenjang + Asosiasi + BI",p:"Teguran Tertulis atas Pemenuhan Kewajiban Sertifikasi Tresuri, Keikutsertaan Tresuri Dealer sebagai Anggota Asosiasi Profesi, serta Pendaftaran Tresuri Dealer di Bank Indonesia Tahun 2026"},
+ {k:"13",code:"K2",slug:"Jenjang-BI",label:"Jenjang + BI",p:"Teguran Tertulis atas Pemenuhan Kewajiban Sertifikasi Tresuri dan Pendaftaran Tresuri Dealer di Bank Indonesia Tahun 2026"},
+ {k:"12",code:"K3",slug:"Jenjang-Asosiasi",label:"Jenjang + Asosiasi",p:"Teguran Tertulis atas Pemenuhan Kewajiban Sertifikasi Tresuri dan Keikutsertaan Tresuri Dealer sebagai Anggota Asosiasi Profesi Tahun 2026"},
+ {k:"23",code:"K4",slug:"Asosiasi-BI",label:"Asosiasi + BI",p:"Teguran Tertulis atas Pemenuhan Kewajiban Keikutsertaan Tresuri Dealer sebagai Anggota Asosiasi Profesi dan Pendaftaran di Bank Indonesia Tahun 2026"},
+ {k:"1",code:"K5",slug:"Jenjang",label:"Jenjang saja",p:"Teguran Tertulis atas Pemenuhan Kewajiban Sertifikasi Tresuri Tahun 2026"},
+ {k:"3",code:"K6",slug:"BI",label:"BI saja",p:"Teguran Tertulis atas Pemenuhan Kewajiban Pendaftaran Tresuri Dealer di Bank Indonesia Tahun 2026"},
+ {k:"2",code:"K7",slug:"Asosiasi",label:"Asosiasi saja",p:"Teguran Tertulis atas Pemenuhan Kewajiban Keikutsertaan Tresuri Dealer sebagai Anggota Asosiasi Profesi Tahun 2026"}];
+const LS="lampiran_mapping_v1";
+const BULAN=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+const NOMOR_DEF=()=>{const d=new Date();return `No.28/          /DSMM/Srt/Rhs tanggal        ${BULAN[d.getMonth()]} ${d.getFullYear()}`;};
+function loadMap(){let m={};try{m=JSON.parse(localStorage.getItem(LS)||"{}")}catch(e){}return m}
+function saveMap(){const m={sec:{},nomor:$("nomor").value};COMBOS.forEach(c=>m[c.k]={p:$("p_"+c.k).value});SEC.forEach(x=>m.sec[x.k]=$("s_"+x.k).value);try{localStorage.setItem(LS,JSON.stringify(m))}catch(e){}if(banks)renderPrev()}
+function renderMap(){const m=loadMap();$("map").innerHTML=COMBOS.map(c=>`<div class="mrow"><b>${c.code} · ${c.label}</b><span class="tag">Pemenuhan ${c.k.split("").join("+")}</span><span class="tag reset" data-t="p" data-k="${c.k}" style="cursor:pointer;color:var(--pri)">kembalikan default</span>
+<textarea id="p_${c.k}"></textarea></div>`).join("");
+ $("sec").innerHTML=SEC.map(x=>`<div class="mrow"><b>${x.label}</b><span class="tag reset" data-t="s" data-k="${x.k}" style="cursor:pointer;color:var(--pri)">kembalikan default</span><textarea id="s_${x.k}"></textarea></div>`).join("");
+ COMBOS.forEach(c=>{$("p_"+c.k).value=(m[c.k]&&m[c.k].p!=null)?m[c.k].p:c.p;$("p_"+c.k).oninput=saveMap;});
+ SEC.forEach(x=>{$("s_"+x.k).value=(m.sec&&m.sec[x.k]!=null)?m.sec[x.k]:x.t;$("s_"+x.k).oninput=saveMap;});
+ const mn=loadMap();$("nomor").value=(mn.nomor!=null&&mn.nomor!=="")?mn.nomor:NOMOR_DEF();$("nomor").oninput=saveMap;
+ $("nReset").onclick=()=>{$("nomor").value=NOMOR_DEF();saveMap();};
+ document.querySelectorAll(".reset").forEach(el=>{el.onclick=()=>{const k=el.getAttribute("data-k");
+  if(el.getAttribute("data-t")==="p"){$("p_"+k).value=COMBOS.find(c=>c.k===k).p;}else{$("s_"+k).value=SEC.find(x=>String(x.k)===k).t;}saveMap();};});}
+const ORD=Object.fromEntries(COMBOS.map((c,i)=>[c.k,i]));
+function sortBanks(m){const a=[...m.entries()].sort((x,y)=>{const d=ORD[comboOf(x[1])]-ORD[comboOf(y[1])];return d||x[0].localeCompare(y[0],"id")});return new Map(a);}
+const comboOf=s=>[1,2,3].filter(k=>s[k].length).join("");
+const cInfo=k=>COMBOS.find(c=>c.k===k)||{code:"K?",slug:"Lain",label:k};
+const labelOf=k=>cInfo(k).label;
+function headerFor(b,s){const k=comboOf(s),o=over[b]||{};
+ return {k,nomor:o.nomor||t($("nomor").value),perihal:o.perihal||t($("p_"+k).value)};}
+function renderPrev(){let h='<table><tr><th>#</th><th>Nama Bank</th><th>P1</th><th>P2</th><th>P3</th><th>Kode</th><th>Kombinasi</th><th>Perihal yang dipakai</th></tr>';let n=0;
+ banks.forEach((s,b)=>{n++;const H=headerFor(b,s);h+=`<tr><td>${n}</td><td>${esc(b)}</td><td>${s[1].length||'-'}</td><td>${s[2].length||'-'}</td><td>${s[3].length||'-'}</td><td>${cInfo(H.k).code}</td><td>${labelOf(H.k)}</td><td>${esc(H.perihal)}${over[b]&&over[b].perihal?' <span class="tag">override Excel</span>':''}</td></tr>`});
+ $('prev').innerHTML=h+'</table>';}
+
+const TPL_B64="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";
+$("dlTpl").onclick=()=>{const a=document.createElement("a");a.href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,"+TPL_B64;a.download="Template_Lampiran_Teguran.xlsx";document.body.appendChild(a);a.click();a.remove();};
+const FK={L:"font_frutiger_light",B:"font_frutiger_bold"};
+const getF=k=>{try{return localStorage.getItem(FK[k])}catch(e){return null}};
+function fontInfo(){const L=!!getF("L"),B=!!getF("B");
+ $("fontInfo").className="msg "+(L?"ok":"warn");
+ $("fontInfo").innerHTML=(L?"✔ Frutiger 45 Light tersimpan":"⚠ Frutiger 45 Light belum diupload → sementara pakai Helvetica")+"<br>"+
+  (B?"✔ Frutiger 65 Bold tersimpan":(L?"⚠ Frutiger Bold belum diupload → bagian bold memakai Light (tidak tebal)":"⚠ Frutiger Bold belum diupload → bold memakai Helvetica Bold"));}
+async function readFont(inp,k){const f=inp.files[0];if(!f)return;const b=new Uint8Array(await f.arrayBuffer());let bin="";for(let i=0;i<b.length;i+=8192)bin+=String.fromCharCode.apply(null,b.subarray(i,i+8192));
+ try{localStorage.setItem(FK[k],btoa(bin));}catch(e){alert("Gagal menyimpan font di browser (mungkin ukuran terlalu besar).");}fontInfo();}
+$("fL").onchange=e=>readFont(e.target,"L");$("fB").onchange=e=>readFont(e.target,"B");
+$("fReset").onclick=()=>{try{localStorage.removeItem(FK.L);localStorage.removeItem(FK.B)}catch(e){}fontInfo();};
+fontInfo();
+function setupFonts(doc){const L=getF("L"),B=getF("B");
+ if(!L)return {n:["helvetica","normal"],b:["helvetica","bold"],tbl:"helvetica",hb:"bold"};
+ doc.addFileToVFS("FrutigerL.ttf",L);doc.addFont("FrutigerL.ttf","Frutiger","normal");
+ if(B){doc.addFileToVFS("FrutigerB.ttf",B);doc.addFont("FrutigerB.ttf","Frutiger","bold");}
+ return {n:["Frutiger","normal"],b:["Frutiger",B?"bold":"normal"],tbl:"Frutiger",hb:B?"bold":"normal"};}
+renderMap();
+$("reset").onclick=()=>{if(!confirm("Kembalikan semua mapping ke default?"))return;try{localStorage.removeItem(LS)}catch(e){}renderMap();if(banks)renderPrev();};
+
+
+$('file').onchange=async e=>{
+  const f=e.target.files[0]; if(!f)return;
+  $('info').className='msg';$('info').textContent='Membaca…';$('prev').innerHTML='';$('go').disabled=true;
+  try{
+    const wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true});
+    const opt={header:1,raw:false,dateNF:'dd-mm-yyyy',defval:''};
+    if(!wb.Sheets['Data'])throw new Error("Sheet 'Data' tidak ditemukan.");
+    over={};
+    if(wb.Sheets['Bank']) XLSX.utils.sheet_to_json(wb.Sheets['Bank'],opt).slice(1).forEach(r=>{if(t(r[0]))over[t(r[0])]={nomor:t(r[1]),perihal:t(r[2])}});
+    banks=new Map(); const warn=[];
+    XLSX.utils.sheet_to_json(wb.Sheets['Data'],opt).slice(1).forEach((r,i)=>{
+      const row=i+2, bank=t(r[0]);
+      if(!r.slice(0,8).some(x=>t(x)))return;
+      const k=parseInt(t(r[1]));
+      if(!bank||![1,2,3].includes(k)){warn.push(`Baris ${row} dilewati (Nama Bank kosong / Pemenuhan bukan 1-3)`);return;}
+      if(!banks.has(bank))banks.set(bank,{1:[],2:[],3:[]});
+      banks.get(bank)[k].push(r.slice(2,8).map(t));
+    });
+    if(!banks.size)throw new Error('Tidak ada data valid di sheet Data.');
+    banks=sortBanks(banks);
+    renderPrev();
+    $('info').className='msg ok';$('info').innerHTML=`${banks.size} bank terbaca.`+(warn.length?`<div class="warn">${warn.map(esc).join('<br>')}</div>`:'');
+    $('go').disabled=false;
+  }catch(err){$('info').className='msg err';$('info').textContent='Error: '+err.message;}
+};
+function esc(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+
+function buildPdf(bank,nomor,perihal,secs){
+  const {jsPDF}=window.jspdf; const doc=new jsPDF({unit:'mm',format:'a4'}); const F=setupFonts(doc);
+  const L=22,R=22,W=210-L-R; let y=22;
+  doc.setFont(...F.b);doc.setFontSize(10.5);doc.setTextColor(0);
+  const hl=doc.splitTextToSize(`Lampiran Surat Bank Indonesia ${nomor} perihal ${perihal}`,W);
+  doc.text(hl,L,y);y+=hl.length*5+6;
+  doc.setFontSize(11);doc.text(bank,L,y);
+  doc.setLineWidth(0.25);doc.line(L,y+1,L+doc.getTextWidth(bank),y+1);y+=9;
+  let n=0;
+  for(const k of [1,2,3]){
+    const rows=secs[k]; if(!rows.length)continue; n++;
+    const tl=doc.splitTextToSize(secTitle(k),W-6);
+    if(y+tl.length*5+25>280){doc.addPage();y=22;}
+    doc.setFont(...F.n);doc.setFontSize(10.5);
+    doc.text(`${n}.`,L,y);doc.text(tl,L+6,y);y+=tl.length*5+1;
+    let head,body,cw;
+    if(k===1){head=['No','Nama pegawai','Jabatan','Jenjang yang diwajibkan','Jenjang yang dimiliki','Tanggal Menjabat','Keterangan'];
+      body=rows.map((r,i)=>[`${i+1}.`,r[0],r[1],r[2],r[3],r[4],r[5]]);cw=[9,27,29,22,23,20,W-130];}
+    else{head=['No','Nama pegawai','Jabatan','Keterangan'];
+      body=rows.map((r,i)=>[`${i+1}.`,r[0],r[1],r[5]||(k===3?KET3:'')]);cw=[9,42,45,W-96];}
+    doc.autoTable({startY:y,head:[head],body,margin:{left:L,right:R},theme:'grid',
+      styles:{font:F.tbl,fontStyle:'normal',fontSize:9.5,textColor:0,lineColor:0,lineWidth:0.2,cellPadding:1.6,valign:'top'},
+      headStyles:{fillColor:[191,191,191],textColor:0,fontStyle:F.hb,halign:'center',valign:'middle'},
+      columnStyles:Object.fromEntries(cw.map((w,i)=>[i,{cellWidth:w}]))});
+    y=doc.lastAutoTable.finalY+10;
+  }
+  return doc.output('arraybuffer');
+}
+const safe=s=>s.replace(/[\\/:*?"<>|]+/g,'').trim();
+
+$('go').onclick=async()=>{
+  const miss=[];banks.forEach((s,b)=>{const H=headerFor(b,s);if(!H.nomor||!H.perihal)miss.push(b)});
+  if(miss.length){$('out').className='msg err';$('out').textContent='Nomor/perihal kosong untuk: '+miss.join(', ');return;}
+  $('go').disabled=true;$('out').className='msg';$('out').textContent='Membuat PDF…';
+  try{
+    const zip=new JSZip();let i=0;
+    banks.forEach((s,b)=>{i++;const H=headerFor(b,s),c=cInfo(H.k);
+      zip.file(`${c.code}_${c.slug}/${c.code}_${String(i).padStart(2,'0')}_${safe(b)}.pdf`,buildPdf(b,H.nomor,H.perihal,s));});
+    const aoa=[["Nama Bank","Perihal yang di Pakai"]];
+    banks.forEach((s,b)=>{aoa.push([b,headerFor(b,s).perihal])});
+    const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:50},{wch:110}];
+    const wbo=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wbo,ws,"Daftar");
+    zip.file("Daftar_Perihal.xlsx",XLSX.write(wbo,{bookType:'xlsx',type:'array'}));
+    const REK=[{k:1,name:"1. Jenjang",h:["Nama Bank","No","Nama pegawai","Jabatan","Jenjang yang diwajibkan","Jenjang yang dimiliki","Tanggal Menjabat","Keterangan"],w:[45,5,22,30,18,18,14,32]},
+      {k:2,name:"2. Asosiasi",h:["Nama Bank","No","Nama pegawai","Jabatan","Keterangan"],w:[45,5,22,30,45]},
+      {k:3,name:"3. Terdaftar di BI",h:["Nama Bank","No","Nama pegawai","Jabatan","Keterangan"],w:[45,5,22,30,45]}];
+    const wbr=XLSX.utils.book_new();
+    REK.forEach(R=>{const a=[R.h];
+      banks.forEach((s,b)=>{s[R.k].forEach((r,j)=>{a.push(R.k===1?[b,j+1,r[0],r[1],r[2],r[3],r[4],r[5]]:[b,j+1,r[0],r[1],r[5]||(R.k===3?KET3:"")])})});
+      const w=XLSX.utils.aoa_to_sheet(a);w['!cols']=R.w.map(x=>({wch:x}));w['!freeze']={xSplit:"0",ySplit:"1"};
+      XLSX.utils.book_append_sheet(wbr,w,R.name);});
+    zip.file("Rekap_Pelanggaran.xlsx",XLSX.write(wbr,{bookType:'xlsx',type:'array'}));
+    const blob=await zip.generateAsync({type:'blob'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download=`Lampiran_${new Date().toISOString().slice(0,10)}.zip`;a.click();
+    $('out').className='msg ok';$('out').textContent=`Selesai: ${i} PDF + Daftar_Perihal.xlsx + Rekap_Pelanggaran.xlsx di-download dalam ZIP.`;
+  }catch(err){$('out').className='msg err';$('out').textContent='Error: '+err.message;}
+  $('go').disabled=false;
+};
+</script></body></html>
