@@ -1,11 +1,29 @@
 CARA PAKAI
 1. Extract ZIP ini (jangan dibuka langsung dari dalam ZIP).
-2. Buka index.html dengan Chrome/Edge.
-3. Bagian "0. Persiapan": download template Excel; upload font Frutiger 45 Light & 65 Bold (.ttf/.otf), cukup sekali per browser.
-4. Cek nomor surat, mapping perihal (K1-K7), dan judul tabel. Semua editable & ada tombol kembalikan default.
-5. Upload Excel, cek pratinjau, klik "Generate ZIP".
+2. PASANG FONT (sekali saja untuk folder ini):
+   - Buka pasang-font.html, pilih file Frutiger 45 Light dan Frutiger 65 Bold (.ttf),
+     klik "Buat fonts.js", lalu pindahkan fonts.js hasil unduhan ke folder lib.
+   - Setelah itu index.html memakai font tersebut otomatis, termasuk bila folder ini
+     disalin atau dibagikan ke komputer lain.
+   - Alternatif cepat: upload font langsung di index.html, tapi hanya berlaku di browser itu.
+   - Tanpa font, PDF tetap jadi tetapi memakai Helvetica.
+3. Buka index.html dengan Chrome/Edge.
+4. Bagian "0": download template Excel bila perlu.
+5. Bagian "1": cek nomor surat, perihal, lalu judul dan narasi tiap jenis pemenuhan.
+6. Bagian "2": upload Excel.
+7. Bagian "3": pilih instansi lalu klik "Lihat Preview" untuk memeriksa hasilnya.
+8. Bagian "4": klik "Generate ZIP".
+
+Jenis pemenuhan:
+ 1 = Kepemilikan Sertifikat Tresuri
+ 2 = Keanggotaan Asosiasi Profesi Tresuri
+ 3 = Pendaftaran Tresuri Dealer di Bank Indonesia
+ 4 = Pengajuan pencabutan surat tanda terdaftar (kolom: Nama, Nomor Pendaftaran TD, Keterangan)
+
 Isi hasil ZIP:
- - folder per kombinasi (K1_Jenjang-Asosiasi-BI, dst) berisi PDF lampiran
- - Daftar_Perihal.xlsx: Nama Bank & Perihal yang di Pakai
- - Rekap_Pelanggaran.xlsx: 3 sheet (1. Jenjang, 2. Asosiasi, 3. Terdaftar di BI)
-Folder "lib" wajib ada di samping index.html. Font Frutiger tidak disertakan (berlisensi).
+ - PDF per instansi, urut abjad
+ - Daftar_Perihal.xlsx
+ - Rekap_Pelanggaran.xlsx (4 sheet)
+
+Folder "lib" wajib ada di samping index.html.
+File font Frutiger tidak disertakan karena berlisensi; pakai file resmi milik kantor.
